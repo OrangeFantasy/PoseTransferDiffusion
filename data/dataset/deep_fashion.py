@@ -2,7 +2,6 @@ import os
 import cv2
 import math
 import numpy as np
-import torch
 
 from PIL import Image
 from torch.utils.data import Dataset
