@@ -7,6 +7,7 @@ from einops import rearrange
 import sys, os
 sys.path.append(os.getcwd())
 from diffusion.modules.attention import SpatialTransformer
+from diffusion.modules.diffusionmodules.condition_encoder import MultiScaleEncoder
 from diffusion.modules.diffusionmodules.utils import timestep_embedding, zero_module
 sys.path.pop()
 
