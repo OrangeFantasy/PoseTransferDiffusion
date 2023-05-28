@@ -20,10 +20,11 @@ model:
         out_ch: 4
         model_ch: 128
         num_res_blocks: 2
-        attn_resolutions: [4, 2, 1]
+        attn_resolutions: [2, 4]
         ch_mult: [1, 2, 4, 4]
         dim_head: 64
         context_dim: 1024
+        context_ch: 4
     
     first_stage_config:
       target: diffusion.models.autoencoder.AutoencoderKL
@@ -49,16 +50,26 @@ model:
       target:
       params:
 
-
 data: 
-  target: data.data_interface.DataInterFace
-  params: 
-    num_workers: 8
-    train_batch_size: 1
-    test_batch_size: 1
+  num_workers: 8
+  train_batch_size: 1
+  test_batch_size: 1
+  
+  dataset_config:
+    target: data.dataset.deep_fashion.DeepFashionDataset
+    params:
+      root: "E:/_Project/_Dataset/In-shop Clothes Retrieval Benchmark"
+      image_size: [256, 256]
+
+# data: 
+#   target: data.data_interface.DataInterFace
+#   params: 
+#     num_workers: 8
+#     train_batch_size: 1
+#     test_batch_size: 1
     
-    dataset_config:
-      target: data.dataset.deep_fashion.DeepFashionDataset
-      params:
-        root: "E:/_Project/_Dataset/In-shop Clothes Retrieval Benchmark"
-        image_size: [256, 256]
+#     dataset_config:
+#       target: data.dataset.deep_fashion.DeepFashionDataset
+#       params:
+#         root: "E:/_Project/_Dataset/In-shop Clothes Retrieval Benchmark"
+#         image_size: [256, 256]

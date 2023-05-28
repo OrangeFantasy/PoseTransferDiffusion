@@ -262,7 +262,7 @@ class PoseTransferDiffusion(DDPM):
         return loss, loss_dict
     
     def get_input(self, batch):
-        # input: batch includes source image, source pose, target image and target pose.
+        # inputs: batch includes source image, source pose, target image and target pose.
         # return: a target image latent code, a list with concat condition and cross condition.
         src_image, src_pose, tgt_image, tgt_pose = batch
 

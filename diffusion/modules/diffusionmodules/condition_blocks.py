@@ -48,19 +48,12 @@ class ResBlock(nn.Module):
 class MultiScaleEncoder(nn.Module):
     def __init__(self, in_ch: int, 
                  model_ch: int, 
-                 num_res_blocks: int | list, 
+                 num_res_blocks: list, 
                  attn_resolutions: list, 
                  ch_mult: list,
                  n_heads: int = -1, 
                  dim_head: int = -1) -> None:
         super().__init__()
-
-        if isinstance(num_res_blocks, int):
-            self.num_res_blocks = len(ch_mult) * [num_res_blocks]
-        else:
-            if len(num_res_blocks) != len(ch_mult):
-                raise ValueError("provide num_res_blocks either as an int (globally constant) or as a list/tuple (per-level) with the same length as channel_mult")
-            self.num_res_blocks = num_res_blocks
 
         # Input Blocks.
         curr_ch = model_ch
@@ -69,7 +62,7 @@ class MultiScaleEncoder(nn.Module):
         ])
         for level, mult in enumerate(ch_mult):
             _ch = model_ch * mult
-            for _ in range(self.num_res_blocks[level]):
+            for _ in range(num_res_blocks[level]):
                 _blocks = [ResBlock(curr_ch, _ch)]
                 curr_ch = _ch
 
@@ -79,29 +72,51 @@ class MultiScaleEncoder(nn.Module):
                 self.input_blocks.append(Downsample(curr_ch))
 
     def forward(self, x: Tensor) -> Tensor:
-        hs = []
+        # Note: 12 multi scale f_x
         h = x
+        hs = [h]
         for module in self.input_blocks:
             h = module(h)
+            # if isinstance(module, ResBlock):
             hs.append(h)
         
         return hs
 
 
 class MappingNetwork(nn.Module):
-    def __init__(self, z_ch, w_ch, num_layers) -> None:
+    def __init__(self, z_ch: int, w_ch: int, num_layers: int = 8) -> None:
         super().__init__()
 
-        self.blocks = nn.ModuleList([nn.Conv2d(z_ch, w_ch, kernel_size=1, stride=1, padding=0)])
+        layers = [nn.Conv2d(z_ch, w_ch, kernel_size=3, stride=1, padding=1)]
         for _ in range(num_layers):
-            self.blocks.append(nn.Sequential(
-                nn.SiLU(),
-                nn.Conv2d(w_ch, w_ch, kernel_size=1, stride=1, padding=0)
-            ))
+            layers.append(nn.SiLU())
+            layers.append(nn.Conv2d(w_ch, w_ch, kernel_size=1, stride=1, padding=0))
+        self.blocks = nn.ModuleList(layers)
 
     def forward(self, x):
         for block in self.blocks:
             x = block(x)
+        return x
+
+
+class AdaptiveInstanceNorm(nn.Module):
+    def __init__(self, ch):
+        super().__init__()
+
+        self.norm = nn.Sequential(
+            nn.InstanceNorm2d(ch),
+            nn.SiLU()
+        )
+        self.beta = nn.Conv2d(ch, ch, kernel_size=3, stride=1, padding=1)
+        self.gamma = nn.Conv2d(ch, ch, kernel_size=3, stride=1, padding=1)
+        
+    def forward(self, x, w):
+        w = self.norm(w) 
+        
+        beta = self.beta(w)
+        gamma = self.gamma(w)
+
+        x = beta + x * (1 + gamma)
         return x
 
 

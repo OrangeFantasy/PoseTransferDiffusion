@@ -2,12 +2,11 @@ import torch
 from torch import nn, Tensor
 from torch.nn import functional as F
 from abc import abstractmethod
-from einops import rearrange
 
 import sys, os
 sys.path.append(os.getcwd())
 from diffusion.modules.attention import SpatialTransformer
-from diffusion.modules.diffusionmodules.condition_encoder import MultiScaleEncoder
+from diffusion.modules.diffusionmodules.condition_blocks import MappingNetwork, MultiScaleEncoder, AdaptiveInstanceNorm
 from diffusion.modules.diffusionmodules.utils import timestep_embedding, zero_module
 sys.path.pop()
 
@@ -18,7 +17,7 @@ class TimestepBlock(nn.Module):
     """
 
     @abstractmethod
-    def forward(self, x, emb):
+    def forward(self, x, emb, *args):
         """
         Apply the module to `x` given `emb` timestep embeddings.
         """
@@ -29,10 +28,10 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
     A sequential module that passes timestep embeddings to the children that support it as an extra input.
     """
 
-    def forward(self, x: Tensor, emb: Tensor, context: Tensor = None) -> Tensor:
+    def forward(self, x: Tensor, emb: Tensor, context: Tensor = None, *args) -> Tensor:
         for layer in self:
             if isinstance(layer, TimestepBlock):
-                x = layer(x, emb)
+                x = layer(x, emb, *args)
             elif isinstance(layer, SpatialTransformer):
                 x = layer(x, context)
             else:
@@ -64,9 +63,51 @@ class Upsample(nn.Module):
         self.conv = nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1)
 
     def forward(self, x):
-        x = F.interpolate(x, scale_factor=2, mode="nearest")
+        x = F.interpolate(x, scale_factor=2, mode="bilinear")
         x = self.conv(x)
         return x
+
+
+class AdaResBlock(TimestepBlock):
+    def __init__(self, in_ch: int, out_ch: int, emb_dim: int, dropout: float = 0.0):
+        super().__init__()
+
+        self.in_norm = AdaptiveInstanceNorm(in_ch)
+        self.in_layers = nn.Sequential(
+            nn.SiLU(),
+            nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1)
+        )
+
+        self.emb_layers = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(emb_dim, out_ch)
+        )
+
+        self.out_norm = AdaptiveInstanceNorm(out_ch)
+        self.out_layers = nn.Sequential(
+            nn.SiLU(),
+            nn.Dropout(dropout),
+            zero_module(nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1))
+        )
+
+        if in_ch == out_ch:
+            self.w_skip = nn.Identity()
+            self.skip_connection = nn.Identity()
+        else:
+            self.w_skip = nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=1, padding=0)
+            self.skip_connection = nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x, emb, *args):
+        w = args[0]
+        h = self.in_layers(self.in_norm(x, w))
+
+        h = h + self.emb_layers(emb)[:, :, None, None]
+
+        w = self.w_skip(w)
+        h = self.out_layers(self.out_norm(h, w))
+
+        x = self.skip_connection(x)
+        return x + h
 
 
 class ResBlock(TimestepBlock):
@@ -94,7 +135,7 @@ class ResBlock(TimestepBlock):
         else:
             self.skip_connection = nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=1, padding=0)
 
-    def forward(self, x, emb):
+    def forward(self, x, emb, *args):
         h = self.in_layers(x)
         h = h + self.emb_layers(emb)[:, :, None, None]
         h = self.out_layers(h)
@@ -112,7 +153,8 @@ class UNetModel(nn.Module):
                  ch_mult: list,
                  n_heads: int = -1, 
                  dim_head: int = -1,
-                 context_dim: int = None) -> None:
+                 context_dim: int = None,
+                 context_ch: int = None) -> None:
         super().__init__()
 
         assert n_heads != -1 or dim_head != -1, "Either num_heads or num_head_channels has to be set"
@@ -134,6 +176,11 @@ class UNetModel(nn.Module):
             nn.Linear(temb_dim, temb_dim)
         )
 
+        # Condition.
+        self.condition_head = MappingNetwork(context_ch, model_ch, 8)
+        self.multi_scale_cond = MultiScaleEncoder(model_ch, model_ch, self.num_res_blocks, [], ch_mult)
+        self.cross_cond = nn.Flatten(2)
+
         # Input Blocks.
         curr_ch = model_ch
         input_chs = [model_ch]
@@ -145,7 +192,7 @@ class UNetModel(nn.Module):
         for level, mult in enumerate(ch_mult):
             _ch = model_ch * mult
             for _ in range(self.num_res_blocks[level]):
-                _blocks = [ResBlock(curr_ch, _ch, temb_dim)]
+                _blocks = [AdaResBlock(curr_ch, _ch, temb_dim)]
                 curr_ch = _ch
 
                 if down_resolution in attn_resolutions:
@@ -165,9 +212,14 @@ class UNetModel(nn.Module):
                 down_resolution *= 2
 
         # Middle Blocks.
+        if dim_head == -1:
+            _dim_head = curr_ch // n_heads
+        else:
+            n_heads = curr_ch // dim_head
+            _dim_head = dim_head
         self.middle_blocks = TimestepEmbedSequential(
-            ResBlock(curr_ch, curr_ch, temb_dim),
-            SpatialTransformer(curr_ch, n_heads, curr_ch // n_heads, depth=1, context_dim=context_dim),
+            AdaResBlock(curr_ch, curr_ch, temb_dim),
+            SpatialTransformer(curr_ch, n_heads, _dim_head, depth=1, context_dim=context_dim),
             ResBlock(curr_ch, curr_ch, temb_dim),
         )
 
@@ -203,24 +255,27 @@ class UNetModel(nn.Module):
         hs = []
         temb = timestep_embedding(timesteps, self.model_ch)
         temb = self.time_embed(temb)
-
-        context = context.flatten(2)
+        
+        context = self.condition_head(context)
+        multi_scale_c = self.multi_scale_cond(context)
+        cross_context = self.cross_cond(context)
 
         h = x
-        for module in self.input_blocks:
-            h = module(h, temb, context)
+        for idx, module in enumerate(self.input_blocks):
+            h = module(h, temb, cross_context, multi_scale_c[idx])
             hs.append(h)
-        h = self.middle_blocks(h,temb, context)
+        h = self.middle_blocks(h,temb, cross_context, multi_scale_c[-1])
         for module in self.output_blocks:
             h = torch.cat([h, hs.pop()], dim=1)
-            h = module(h, temb, context)
+            h = module(h, temb, cross_context)
 
         h = self.out(h)
         return h
 
 
 if __name__ == "__main__":
-    model = UNetModel(8, 128, 4, num_res_blocks=2, attn_resolutions=[1, 2, 4], ch_mult=[1, 2, 4, 4], dim_head=64, context_dim=1024).cuda()
+    model = UNetModel(8, 128, 4, num_res_blocks=2, attn_resolutions=[], 
+                      ch_mult=[1, 2, 4, 4], dim_head=64, context_dim=1024, context_ch=4).cuda()
     x = torch.rand([1, 8, 32, 32]).cuda()  # [b, c, h, w]
     t = torch.randint(0, 1000, [1]).cuda()  # [b]
     context = torch.rand([1, 4, 32, 32]).cuda()  # [b, k, d]
