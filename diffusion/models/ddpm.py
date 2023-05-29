@@ -7,10 +7,11 @@ import pytorch_lightning as pl
 from torch import Tensor
 from torch.nn import functional as F
 from functools import partial
+from tqdm import tqdm
 
-from diffusion.modules.diffusionmodules.utils import make_beta_schedule, extract_into_tensor
 from diffusion.utils import instantiate_from_config
 from diffusion.modules.distributions import DiagonalGaussianDistribution
+from diffusion.modules.diffusionmodules.utils import make_beta_schedule, extract_into_tensor, noise_like
 
 
 class DDPM(pl.LightningModule):
@@ -26,7 +27,10 @@ class DDPM(pl.LightningModule):
                  v_posterior: float = 0.0,
                  parameterization: str = "eps",
                  scheduler_config   = None,
-                 ckpt_path: str     = None) -> None:
+                 ckpt_path: str     = None,
+                 # sample param:
+                 image_size: int    = 256,
+                 ch: int            = 3) -> None:
         super().__init__()
 
         assert parameterization in ["eps", "x0", "v"], 'currently only supporting "eps" and "x0" and "v"'
@@ -43,6 +47,8 @@ class DDPM(pl.LightningModule):
         self.v_posterior = v_posterior
         self.register_schedule(beta_schedule, timesteps, beta_1, beta_T, cosine_s)
 
+        self.image_size = image_size
+        self.ch = ch
 
     def register_schedule(self, beta_schedule="linear", timesteps=1000, linear_start=1e-4, linear_end=2e-2, cosine_s=8e-3):
         betas = make_beta_schedule(beta_schedule, timesteps, linear_start=linear_start, linear_end=linear_end, cosine_s=cosine_s)
@@ -143,7 +149,7 @@ class DDPM(pl.LightningModule):
                 extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t -
                 extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * noise
         )
-    
+
     def get_loss(self, pred: Tensor, target: Tensor, mean: bool = True):
         if self.loss_type == "l1":
             loss = (target - pred).abs()
@@ -238,19 +244,22 @@ class PoseTransferDiffusion(DDPM):
     def decode_first_stage(self, z):
         return self.first_stage_model.decode(z)
 
+    def apply_model(self, x_noisy, t, condition):
+        target_pose, source_image = condition
+        model_out = self.model.forward(x_noisy, t, target_pose, source_image)
+        return model_out
+
     def p_losses(self, x_start, t, condition, noise: Tensor = None):
         if noise is None:
             noise = torch.randn_like(x_start)
 
-        x_t = self.q_sample(x_start=x_start, t=t, noise=noise)
-        
-        target_pose, source_image = condition
-        model_out = self.model.forward(x_t, t, target_pose, source_image)
+        x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
+        model_output = self.apply_model(x_noisy, t, condition)
 
         loss_dict = {}
         prefix = 'train' if self.training else 'val'
 
-        loss_simple = self.get_loss(model_out, noise, mean=False).mean(dim=[1, 2, 3])
+        loss_simple = self.get_loss(model_output, noise, mean=False).mean(dim=[1, 2, 3])
         loss_dict.update({f"{prefix}/loss_simple": loss_simple.mean()})
 
         return loss_simple, loss_dict
@@ -290,6 +299,43 @@ class PoseTransferDiffusion(DDPM):
             return [optimizer, scheduler]
         
         return optimizer
+
+    @torch.no_grad()
+    def p_mean_variance(self, x_t, c, t):
+        model_out = self.apply_model(x_t, t, c)
+
+        if self.parameterization == "eps":
+            x_recon = self.predict_start_from_noise(x_t, t, noise=model_out)
+        else:
+            raise TypeError
+        
+        model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x_t, t=t)
+        return model_mean, posterior_variance, posterior_log_variance
+
+    @torch.no_grad()
+    def p_sample(self, x_t, c, t):
+        model_mean, _, model_log_variance = self.p_mean_variance(x_t, c, t)
+
+        noise = torch.randn_like(x_t)
+        nonzero_mask = (1 - (t == 0).float()).reshape(x_t.shape[0], *((1,) * (len(x_t.shape) - 1)))
+        return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
+
+    @torch.no_grad()
+    def p_sample_loop(self, x_T, condition, timesteps: int = None):
+        if timesteps is None:
+            timesteps = self.num_timesteps
+
+        x_t = x_T
+        for i in tqdm(reversed(range(0, timesteps)), desc='Sampling t', total=timesteps):
+            ts = torch.full([x_T.shape[0]], i, device=x_T.device, dtype=torch.long)
+            x_t = self.p_sample(x_t, condition, ts)
+        x_0 = torch.clip(x_t, -1., 1.)
+        return x_0
+
+    @torch.no_grad()
+    def sample(self, condition, batch_size=16):
+        x_T = torch.randn([batch_size, self.ch, self.image_size, self.image_size], device=self.betas.device)
+        return self.p_sample_loop(x_T, condition)
 
 
 if __name__ == "__main__":

@@ -29,7 +29,7 @@ if __name__ == '__main__':
     dataloader = instantiate_from_config(config.data)
     model = instantiate_from_config(config.model).cuda()
     if sys.platform == "linux":
-        model = torch.compile(mode)
+        model = torch.compile(model)
         print("Platform: Linux. Use compiled model.")
 
     trainer = Trainer(max_epochs=200, accelerator="gpu", devices=1)
