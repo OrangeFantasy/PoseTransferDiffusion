@@ -5,7 +5,7 @@ from abc import abstractmethod
 
 import sys, os
 sys.path.append(os.getcwd())
-from diffusion.modules.attention import SpatialTransformer
+from diffusion.modules.attention import SpatialTransformer, SpatialAttentionBlock
 from diffusion.modules.diffusionmodules.condition_blocks import MappingNetwork, MultiScaleEncoder, AdaptiveInstanceNorm
 from diffusion.modules.diffusionmodules.utils import timestep_embedding, zero_module
 sys.path.pop()
@@ -32,7 +32,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
         for layer in self:
             if isinstance(layer, TimestepBlock):
                 x = layer(x, emb, *args)
-            elif isinstance(layer, SpatialTransformer):
+            elif isinstance(layer, SpatialAttentionBlock):
                 x = layer(x, context)
             else:
                 x = layer(x)
@@ -151,10 +151,11 @@ class UNetModel(nn.Module):
                  num_res_blocks: int | list, 
                  attn_resolutions: list, 
                  ch_mult: list,
-                 n_heads: int = -1, 
-                 dim_head: int = -1,
-                 context_dim: int = None,
-                 context_ch: int = None) -> None:
+                 n_heads: int       = -1, 
+                 dim_head: int      = -1,
+                 context_dim: int   = None,
+                 context_ch: int    = None, 
+                 dropout: float     = 0.) -> None:
         super().__init__()
 
         assert n_heads != -1 or dim_head != -1, "Either num_heads or num_head_channels has to be set"
@@ -177,9 +178,8 @@ class UNetModel(nn.Module):
         )
 
         # Condition.
-        self.condition_head = MappingNetwork(context_ch, model_ch, 8)
-        self.multi_scale_cond = MultiScaleEncoder(model_ch, model_ch, self.num_res_blocks, [], ch_mult)
-        self.cross_cond = nn.Flatten(2)
+        self.condition_mapping = MappingNetwork(context_ch, context_dim, 8)
+        self.multi_scale_encoder = MultiScaleEncoder(context_dim, model_ch, self.num_res_blocks, [], ch_mult)
 
         # Input Blocks.
         curr_ch = model_ch
@@ -192,7 +192,7 @@ class UNetModel(nn.Module):
         for level, mult in enumerate(ch_mult):
             _ch = model_ch * mult
             for _ in range(self.num_res_blocks[level]):
-                _blocks = [AdaResBlock(curr_ch, _ch, temb_dim)]
+                _blocks = [AdaResBlock(curr_ch, _ch, temb_dim, dropout)]
                 curr_ch = _ch
 
                 if down_resolution in attn_resolutions:
@@ -201,7 +201,7 @@ class UNetModel(nn.Module):
                     else:
                         n_heads = curr_ch // dim_head
                         _dim_head = dim_head
-                    _blocks.append(SpatialTransformer(curr_ch, n_heads, _dim_head, depth=1, context_dim=context_dim))
+                    _blocks.append(SpatialAttentionBlock(curr_ch, n_heads, _dim_head, depth=1, context_dim=context_dim, dropout=dropout))
                 
                 self.input_blocks.append(TimestepEmbedSequential(*_blocks))
                 input_chs.append(curr_ch)
@@ -218,9 +218,9 @@ class UNetModel(nn.Module):
             n_heads = curr_ch // dim_head
             _dim_head = dim_head
         self.middle_blocks = TimestepEmbedSequential(
-            AdaResBlock(curr_ch, curr_ch, temb_dim),
-            SpatialTransformer(curr_ch, n_heads, _dim_head, depth=1, context_dim=context_dim),
-            ResBlock(curr_ch, curr_ch, temb_dim),
+            AdaResBlock(curr_ch, curr_ch, temb_dim, dropout),
+            SpatialAttentionBlock(curr_ch, n_heads, _dim_head, depth=1, context_dim=context_dim, dropout=dropout),
+            ResBlock(curr_ch, curr_ch, temb_dim, dropout),
         )
 
         # Output Blocks.
@@ -228,7 +228,7 @@ class UNetModel(nn.Module):
         for level, mult in list(enumerate(ch_mult))[::-1]:
             _ch = model_ch * mult
             for i in range(self.num_res_blocks[level] + 1):
-                _blocks = [ResBlock(curr_ch + input_chs.pop(), _ch, temb_dim)]
+                _blocks = [ResBlock(curr_ch + input_chs.pop(), _ch, temb_dim, dropout)]
                 curr_ch = _ch
 
                 if down_resolution in attn_resolutions:
@@ -237,7 +237,7 @@ class UNetModel(nn.Module):
                     else:
                         n_heads = curr_ch // dim_head
                         _dim_head = dim_head
-                    _blocks.append(SpatialTransformer(curr_ch, n_heads, curr_ch // n_heads, depth=1, context_dim=context_dim))
+                    _blocks.append(SpatialAttentionBlock(curr_ch, n_heads, _dim_head, depth=1, context_dim=context_dim, dropout=dropout))
 
                 if level != 0 and i == self.num_res_blocks[level]:
                     _blocks.append(Upsample(curr_ch))
@@ -256,18 +256,17 @@ class UNetModel(nn.Module):
         temb = timestep_embedding(timesteps, self.model_ch)
         temb = self.time_embed(temb)
         
-        context = self.condition_head(context)
-        multi_scale_c = self.multi_scale_cond(context)
-        cross_context = self.cross_cond(context)
+        context = self.condition_mapping(context)
+        multi_scale_context = self.multi_scale_encoder(context)
 
         h = x
         for idx, module in enumerate(self.input_blocks):
-            h = module(h, temb, cross_context, multi_scale_c[idx])
+            h = module(h, temb, context, multi_scale_context[idx])
             hs.append(h)
-        h = self.middle_blocks(h,temb, cross_context, multi_scale_c[-1])
+        h = self.middle_blocks(h, temb, context, multi_scale_context[-1])
         for module in self.output_blocks:
             h = torch.cat([h, hs.pop()], dim=1)
-            h = module(h, temb, cross_context)
+            h = module(h, temb, context)
 
         h = self.out(h)
         return h
@@ -275,7 +274,7 @@ class UNetModel(nn.Module):
 
 if __name__ == "__main__":
     model = UNetModel(8, 128, 4, num_res_blocks=2, attn_resolutions=[], 
-                      ch_mult=[1, 2, 4, 4], dim_head=64, context_dim=1024, context_ch=4).cuda()
+                      ch_mult=[1, 2, 4, 4], dim_head=64, context_dim=128, context_ch=4).cuda()
     x = torch.rand([1, 8, 32, 32]).cuda()  # [b, c, h, w]
     t = torch.randint(0, 1000, [1]).cuda()  # [b]
     context = torch.rand([1, 4, 32, 32]).cuda()  # [b, k, d]

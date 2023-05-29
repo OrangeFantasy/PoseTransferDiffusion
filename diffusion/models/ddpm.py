@@ -120,8 +120,7 @@ class DDPM(pl.LightningModule):
     
     def q_sample(self, x_start: Tensor, t: Tensor, noise: Tensor = None):
         """
-        Diffuse the data for a given number of diffusion steps.
-        In other words, sample from q(x_t | x_0).
+        Diffuse the data for a given number of diffusion steps. In other words, sample from q(x_t | x_0).
         :param x_start: the initial data batch.
         :param t: the number of diffusion steps (minus 1). Here, 0 means one step.
         :param noise: if specified, the split-out normal noise.
@@ -318,7 +317,8 @@ class PoseTransferDiffusion(DDPM):
 
         noise = torch.randn_like(x_t)
         nonzero_mask = (1 - (t == 0).float()).reshape(x_t.shape[0], *((1,) * (len(x_t.shape) - 1)))
-        return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
+        x_sample = model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
+        return x_sample
 
     @torch.no_grad()
     def p_sample_loop(self, x_T, condition, timesteps: int = None):

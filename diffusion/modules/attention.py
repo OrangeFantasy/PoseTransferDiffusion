@@ -3,7 +3,11 @@ from torch import nn, Tensor
 from torch.nn import functional as F
 from einops import rearrange
 
+import sys, os
+sys.path.append(os.getcwd())
 from diffusion.modules.diffusionmodules.utils import zero_module
+sys.path.pop()
+
 
 try:
     import xformers
@@ -95,7 +99,7 @@ class BasicTransformerBlock(nn.Module):
 
 
 class SpatialTransformer(nn.Module):
-    def __init__(self, in_ch: int, n_heads: int, dim_head: int, depth:int = 1, context_dim: int = None, dropout: float = 0.0) -> None:
+    def __init__(self, in_ch: int, n_heads: int, dim_head: int, depth: int = 1, context_dim: int = None, dropout: float = 0.0) -> None:
         super().__init__()
 
         if not isinstance(context_dim, list):
@@ -182,6 +186,84 @@ class MemoryEfficientCrossAttention(nn.Module):
         return self.to_out(out)
 
 
+class AttentionBlock(nn.Module):
+    def __init__(self, query_dim: int, n_heads: int, dim_head: int, context_dim: int = None, dropout: float = 0.0) -> None:
+        super().__init__()
+
+        self.n_heads = n_heads
+        self.scale = dim_head ** -0.5
+
+        inner_dim = dim_head * n_heads
+        if context_dim is None:
+            context_dim = query_dim
+
+        self.to_q = nn.Conv2d(query_dim, inner_dim, kernel_size=1, stride=1, padding=0)
+        self.to_k = nn.Conv2d(context_dim, inner_dim, kernel_size=1, stride=1, padding=0)
+        self.to_v = nn.Conv2d(context_dim, inner_dim, kernel_size=1, stride=1, padding=0)
+        self.to_out = nn.Sequential(
+            nn.Conv2d(inner_dim, query_dim, kernel_size=1, stride=1, padding=0),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, x: Tensor, context: Tensor) -> None:
+        if context is None:
+            context = x
+        b, c, h, w = x.shape
+
+        q = self.to_q(x)
+        k = self.to_k(context)
+        v = self.to_v(context)
+        q, k, v = map(lambda _it: rearrange(_it, "b (n d) h w -> (b n) (h w) d", n=self.n_heads), (q, k, v))
+
+        sim = torch.einsum("b i d, b j d -> b i j", q, k) * self.scale
+        sim = torch.softmax(sim, dim=-1)
+
+        out = torch.einsum("b i j, b j d -> b i d", sim, v)
+        out = rearrange(out, "(b n) (h w) d -> b (n d) h w", n=self.n_heads, h=h)
+        out = self.to_out(out)
+        return out
+
+
+class BasicAttentionBlock(nn.Module):
+    def __init__(self, dim: int, n_heads: int, dim_head: int, context_dim: int = None, dropout: float = 0.0) -> None:
+        super().__init__()
+        self.norm1 = nn.GroupNorm(32, dim)
+        self.attn1 = AttentionBlock(dim, n_heads, dim_head, None, dropout)
+        self.norm2 = nn.GroupNorm(32, dim)
+        self.attn2 = AttentionBlock(dim, n_heads, dim_head, context_dim, dropout)
+
+    def forward(self, x: Tensor, context: Tensor = None):
+        x = self.attn1(self.norm1(x), None) + x
+        x = self.attn2(self.norm2(x), context) + x
+        return x
+
+
+class SpatialAttentionBlock(nn.Module):
+    def __init__(self, in_ch: int, n_heads: int, dim_head: int, depth: int = 1, context_dim: int = None, dropout: float = 0.0) -> None:
+        super().__init__()
+        
+        if not isinstance(context_dim, list):
+            context_dim = [context_dim]
+        inner_dim = n_heads * dim_head
+
+        self.norm = nn.GroupNorm(32, in_ch, eps=1e-6)
+        self.proj_in = nn.Conv2d(in_ch, inner_dim, kernel_size=1, stride=1, padding=0)
+        self.attn_blocks = nn.ModuleList(
+            [BasicAttentionBlock(inner_dim, n_heads, dim_head, dropout=dropout, context_dim=context_dim[i])
+             for i in range(depth)]
+        )
+        self.proj_out = zero_module(nn.Conv2d(inner_dim, in_ch, kernel_size=1, stride=1, padding=0))
+
+    def forward(self, x: Tensor, context: Tensor = None):
+        h = self.norm(x)
+        h = self.proj_in(h)
+
+        for block in self.attn_blocks:
+            h = block(h, context)
+
+        h = self.proj_out(h)
+        return x + h
+
 
 if __name__ == "__main__":
     torch.manual_seed(42)
@@ -199,10 +281,16 @@ if __name__ == "__main__":
     # out = block.forward(x, context)
     # print(out.shape)
 
-    block = SpatialTransformer(128, 16, 64, depth=1, context_dim=1024)
-    x = torch.rand([1, 128, 32, 32])
-    context = torch.rand([1, 4, 1024])
+    # block = SpatialTransformer(128, 16, 64, depth=1, context_dim=1024)
+    # x = torch.rand([1, 128, 32, 32])
+    # context = torch.rand([1, 4, 1024])
+    # out = block.forward(x, context)
+    # print(out[:, 0, :, 0])
+
+    block = SpatialAttentionBlock(512, 8, 64, depth=1, context_dim=128)
+    x = torch.randn([1, 512, 8, 8])
+    context = torch.randn([1, 128, 32, 32])
     out = block.forward(x, context)
-    print(out[:, 0, :, 0])
+    print(out.shape)
 
     pass
