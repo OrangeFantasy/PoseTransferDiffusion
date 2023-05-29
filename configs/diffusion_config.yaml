@@ -11,6 +11,7 @@ model:
     loss_type: "l2"
     v_posterior: 0.0
     parameterization: "eps"
+    guidance_probability: 0.15
     # ckpt_path: 
 
     unet_config:
@@ -50,22 +51,11 @@ model:
       target:
       params:
 
-# data: 
-#   num_workers: 8
-#   train_batch_size: 1
-#   test_batch_size: 1
-  
-#   dataset_config:
-#     target: data.dataset.deep_fashion.DeepFashionDataset
-#     params:
-#       root: "E:/_Project/_Dataset/In-shop Clothes Retrieval Benchmark"
-#       image_size: [256, 256]
-
 data: 
   target: data.data_interface.DataInterFace
   params: 
     num_workers: 8
-    train_batch_size: 1
+    train_batch_size: 4
     test_batch_size: 1
     
     dataset_config:

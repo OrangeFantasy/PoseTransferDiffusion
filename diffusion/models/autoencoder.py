@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 import torch.nn.functional as F
 from contextlib import contextmanager
 
-from diffusion.modules.diffusionmodules.vae_blocks import Encoder, Decoder
+from diffusion.modules.diffusionmodules.blocks import Encoder, Decoder
 from diffusion.modules.distributions import DiagonalGaussianDistribution
 
 from diffusion.utils import instantiate_from_config

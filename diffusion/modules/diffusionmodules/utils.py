@@ -89,8 +89,22 @@ def noise_like(shape, device, repeat=False):
     return repeat_noise() if repeat else noise()
 
 
+def probability_mask(shape, probability, device):
+    mask = None
+    if probability == 1:
+        mask = torch.ones(shape, device=device, dtype=torch.bool)
+    elif probability == 0:
+        mask = torch.zeros(shape, device=device, dtype=torch.bool)
+    else:
+        mask = torch.zeros(shape, device=device).float().uniform_(0, 1) > probability
+    return mask
+
+
 if __name__ == "__main__":
-    timesteps = torch.tensor([1, 2, 3, 4], dtype=torch.int64, device="cuda")
-    dim = 128
-    emb = timestep_embedding(timesteps, dim)
-    print(emb.shape)
+    # timesteps = torch.tensor([1, 2, 3, 4], dtype=torch.int64, device="cuda")
+    # dim = 128
+    # emb = timestep_embedding(timesteps, dim)
+    # print(emb.shape)
+
+    for i in range(20):
+        print(probability_mask([8], 0.1, "cpu"))
