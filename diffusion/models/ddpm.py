@@ -293,8 +293,8 @@ class PoseTransferDiffusion(DDPM):
         # return: a target image latent code, a list with concat condition and cross condition.
         src_image, src_pose, tgt_image, tgt_pose = batch
         
-        tgt_pose = tgt_pose * probability_mask(tgt_pose.shape[0], self.guidance_probability, tgt_pose.device).view(-1, 1, 1, 1)
-        src_image = src_image * probability_mask(src_image.shape[0], self.guidance_probability, src_image.device).view(-1, 1, 1, 1)
+        tgt_pose = tgt_pose * probability_mask(tgt_pose.shape, self.guidance_probability, tgt_pose.device)
+        src_image = src_image * probability_mask(src_image.shape, self.guidance_probability, src_image.device)
 
         z = self.get_first_stage_encoding(self.encode_first_stage(tgt_image)).detach()
         c_concat = self.get_first_stage_encoding(self.encode_first_stage(tgt_pose)).detach()

@@ -51,3 +51,7 @@ if __name__ == '__main__':
 
     trainer = Trainer.from_argparse_args(opt)
     trainer.fit(model, dataloader)
+
+
+x = torch.tensor([123])
+x.sigmoid().data

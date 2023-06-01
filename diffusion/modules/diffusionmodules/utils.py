@@ -89,15 +89,25 @@ def noise_like(shape, device, repeat=False):
     return repeat_noise() if repeat else noise()
 
 
-def probability_mask(shape, probability, device):
-    mask = None
-    if probability == 1:
-        mask = torch.ones(shape, device=device, dtype=torch.bool)
-    elif probability == 0:
-        mask = torch.zeros(shape, device=device, dtype=torch.bool)
+def probability_mask(shape, probability, device) -> Tensor:
+    if probability == 1.:
+        return torch.zeros(shape,  device=device, dtype=torch.bool)
+    elif probability == 0.:
+        return torch.ones(shape, device=device, dtype=torch.bool)
     else:
-        mask = torch.zeros(shape, device=device).float().uniform_(0, 1) > probability
-    return mask
+        mask = torch.zeros(shape[0], device=device, dtype=torch.float32).uniform_() > probability
+        mask = mask.reshape(shape[0], *([1, ] * (len(shape) - 1)))
+        return mask
+
+# def probability_mask(shape, probability, device):
+#     mask = None
+#     if probability == 1:
+#         mask = torch.ones(shape, device=device, dtype=torch.bool)
+#     elif probability == 0:
+#         mask = torch.zeros(shape, device=device, dtype=torch.bool)
+#     else:
+#         mask = torch.zeros(shape, device=device).float().uniform_(0, 1) > probability
+#     return mask
 
 
 if __name__ == "__main__":
@@ -106,5 +116,8 @@ if __name__ == "__main__":
     # emb = timestep_embedding(timesteps, dim)
     # print(emb.shape)
 
+    x = torch.rand([8, 1, 4, 4], device="cuda")
+
     for i in range(20):
-        print(probability_mask([8], 0.1, "cpu"))
+        mask = probability_mask(x.shape, 0.7, x.device)
+        x = x * mask
