@@ -2,3 +2,7 @@ __/
 __pycache__/
 lightning_logs/
 images/
+images/*.*
+
+*.png
+*.jpg

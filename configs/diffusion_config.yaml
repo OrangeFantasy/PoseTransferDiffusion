@@ -59,7 +59,14 @@ data:
     test_batch_size: 1
     
     dataset_config:
-      target: data.dataset.deep_fashion.DeepFashionDataset
+      target: data.dataset.deep_fashion.DeepFashionDataset_FromEncoding
       params:
         root: "E:/_Project/_Dataset/In-shop Clothes Retrieval Benchmark"
-        image_size: [256, 256]
+        pairs_num: 20000
+        is_train: true
+
+raw_data_config:
+  target: data.dataset.deep_fashion.DeepFashionDataset
+  params:
+    root: "E:/_Project/_Dataset/In-shop Clothes Retrieval Benchmark"
+    image_size: [256, 256]

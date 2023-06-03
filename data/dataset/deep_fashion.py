@@ -2,6 +2,8 @@ import os
 import cv2
 import math
 import numpy as np
+import torch
+import random
 
 from PIL import Image
 from torch.utils.data import Dataset
@@ -10,7 +12,7 @@ from torchvision.transforms import functional as vf
 
 
 class DeepFashionDataset(Dataset):
-    def __init__(self, root: str, image_size, is_train: bool = True):
+    def __init__(self, root, image_size, is_train: bool = True):
         super().__init__()
 
         self.root = root
@@ -38,9 +40,9 @@ class DeepFashionDataset(Dataset):
     def __getitem__(self, index):
         path = self.data[index]
         
-        source_image = self.load_image(path['source_image'])
+        source_image = self.load_image(path["source_image"])
         source_skeleton = self.load_skeleton_from_keypoints(path["source_skeleton"])
-        target_image = self.load_image(path['target_image'])
+        target_image = self.load_image(path["target_image"])
         target_skeleton = self.load_skeleton_from_keypoints(path["target_skeleton"])
 
         return source_image, source_skeleton, target_image, target_skeleton
@@ -54,10 +56,10 @@ class DeepFashionDataset(Dataset):
         for item in lines:
             dict_item = {}
             item = item.strip().split(',')
-            dict_item['source_image'] = os.path.join(self.root, item[0])
-            dict_item['source_skeleton'] = os.path.join(self.root, self.replace_image_to_keypoints(item[0]))
-            dict_item['target_image'] = os.path.join(self.root, item[1])
-            dict_item['target_skeleton'] = os.path.join(self.root, self.replace_image_to_keypoints(item[1]))
+            dict_item["source_image"] = os.path.join(self.root, item[0])
+            dict_item["source_skeleton"] = os.path.join(self.root, self.replace_image_to_keypoints(item[0]))
+            dict_item["target_image"] = os.path.join(self.root, item[1])
+            dict_item["target_skeleton"] = os.path.join(self.root, self.replace_image_to_keypoints(item[1]))
             image_paths.append(dict_item)
         return image_paths
     
@@ -106,8 +108,6 @@ class DeepFashionDataset(Dataset):
         #     dist = (dist - np.min(dist)) / (np.max(dist) - np.min(dist) + 1e-10)
 
         #     dist_tensor.append(vf.to_tensor(Image.fromarray(dist)))
-        # vf.to_pil_image(torch.cat(dist_tensor, dim=-1)).show()
-        # vf.to_pil_image(pose_tensor).show()
         # dist_tensor = torch.cat(dist_tensor, dim=0)
 
         # skeleton_tensor = torch.cat([pose_tensor, dist_tensor], dim=0)
@@ -126,15 +126,75 @@ class DeepFashionDataset(Dataset):
 
     @staticmethod
     def replace_image_to_keypoints(path: str) -> str:
-        return path.replace("img", "keypoints").replace(".jpg", ".txt") 
+        return path.replace("img", "keypoints").replace(".jpg", ".txt")
 
+
+class DeepFashionDataset_FromEncoding(Dataset):
+    def __init__(self, root, pairs_num: int = -1, is_train: bool = True):
+        self.root = root
+        self.data_paths = self.get_paths_from("train_pairs.txt" if is_train else "test_pairs.txt")
         
+        if pairs_num != -1:
+            self.data_paths = random.sample(self.data_paths, k=pairs_num)
+
+        self.size = len(self.data_paths)
+    
+    def __len__(self):
+        return self.size
+    
+    def __getitem__(self, index):
+        paths = self.data_paths[index]
+        src_img = torch.from_numpy(np.load(paths[0])).squeeze()
+        src_pose = torch.from_numpy(np.load(paths[1])).squeeze()
+        tgt_img = torch.from_numpy(np.load(paths[2])).squeeze()
+        tgt_pose = torch.from_numpy(np.load(paths[3])).squeeze()
+
+        return src_img, src_pose, tgt_img, tgt_pose
+
+    def get_paths_from(self, pairs_file):
+        file = open(os.path.join(self.root, pairs_file))
+        lines = file.readlines()
+        file.close()
+
+        image_paths = []
+        for item in lines:
+            paths = []
+            item = item.strip().split(",")
+
+            paths.append(os.path.join(self.root, self._to_img_encoding_path(item[0])))
+            paths.append(os.path.join(self.root, self._to_pose_encoding_path(item[0])))
+            paths.append(os.path.join(self.root, self._to_img_encoding_path(item[1])))
+            paths.append(os.path.join(self.root, self._to_pose_encoding_path(item[1])))
+            image_paths.append(paths)
+        return image_paths
+    
+    @staticmethod
+    def _to_img_encoding_path(path: str) -> str:
+        return path.replace("img", "encoding_img") + ".npy"
+    
+    @staticmethod
+    def _to_pose_encoding_path(path: str) -> str:
+        return path.replace("img", "encoding_pose").replace(".jpg", ".txt") + ".npy"
+
+
 if __name__ == "__main__":
     root = r"E:/_Project/_Dataset/In-shop Clothes Retrieval Benchmark"
-    train_dataset = DeepFashionDataset(root, image_size=[64, 64])
+    # train_dataset = DeepFashionDataset_1(root, image_size=[64, 64])
 
-    paths = train_dataset.data[512]
-    test_pose_path = paths["target_skeleton"]  #.replace("img", "keypoints").replace(".jpg", ".txt")
-    train_dataset.load_skeleton_from_keypoints(test_pose_path)
+    # paths = train_dataset.data[512]
+    # test_pose_path = paths["target_skeleton"]  #.replace("img", "keypoints").replace(".jpg", ".txt")
+    # train_dataset.load_skeleton_from_keypoints(test_pose_path)
+
+    # dataset = DeepFashionDataset_2(root, "train_img_pairs.csv", "train_pose_maps", pairs_nums=100)
+    # a, b, c, d = dataset.__getitem__(0)
+
+    # import torch
+    # from torchvision.utils import save_image
+    # save_image(torch.cat([a, b, c, d], dim=-1), "./png")
+
+    from torchvision.utils import save_image
+    dataset = DeepFashionDataset_FromEncoding(root, pairs_num=200)
+    src_img, src_pose, tgt_img, tgt_pose = dataset.__getitem__(100)
+    save_image(torch.cat([src_img, src_pose, tgt_img, tgt_pose], dim=-1), "./1.png")
 
     print()

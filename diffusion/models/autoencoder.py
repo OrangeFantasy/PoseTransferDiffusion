@@ -221,31 +221,48 @@ class IdentityFirstStage(torch.nn.Module):
 
 if __name__ == "__main__":
     from omegaconf import OmegaConf
-    from torchvision.transforms import functional as vf
-    from PIL import Image
-    
-    config = OmegaConf.load("configs/diffusion_config.yaml")
-    vae_config = config.model.params.first_stage_config
-
-    vae_model: AutoencoderKL = instantiate_from_config(vae_config).cuda().eval()
-
-    vae_path = r"E:/_Project\stable-diffusion-webui/models/VAE/vae-ft-mse-840000-ema-pruned.ckpt"
-    # ckpt = torch.load(vae_path)
-    # vae_model.load_state_dict(ckpt)
-    vae_model.init_from_ckpt(vae_path)
-    
-    image_path = r"E:\_Project\_Dataset\In-shop Clothes Retrieval Benchmark\img\WOMEN\Rompers_Jumpsuits\id_00000457\01_1_front.jpg"
-    pose_path = r"E:\_Project\_Dataset\In-shop Clothes Retrieval Benchmark\_pose\WOMEN\Pants\id_00000887\02_1_front.jpg"
-    image = Image.open(image_path)
-    image = vf.resize(image, [256, 256])
-
-    x = vf.to_tensor(image).unsqueeze(0).cuda()
-    # x = torch.rand([1, 3, 256, 256]).cuda()
-    z = vae_model.encode(x).sample()
-    x_ = vae_model.decode(z)
-
+    import numpy as np
     from torchvision.utils import save_image
-    # save_tensor = torch.cat(batch, dim=-1)
-    save_image(x_[0], "decode.png", normalize=True)
+    config = OmegaConf.load("configs/diffusion_config.yaml")
 
-    print(z.shape)
+    vae_config = config.model.params.first_stage_config
+    vae_model: AutoencoderKL = instantiate_from_config(vae_config).cuda().eval()
+    # image_path = r"E:\_Project\_Dataset\In-shop Clothes Retrieval Benchmark\img\WOMEN\Rompers_Jumpsuits\id_00000457\01_1_front.jpg"
+
+    # image = Image.open(image_path)
+    # image = vf.resize(image, [256, 256])
+    # image = vf.to_tensor(image).unsqueeze(0).cuda()
+
+    # # x = torch.rand([1, 3, 256, 256]).cuda()
+    # z = vae_model.encode(image).sample()
+    # x_ = vae_model.decode(z)
+
+    # from torchvision.utils import save_image
+    # # save_tensor = torch.cat(batch, dim=-1)
+    # save_image(x_[0], "decode.png", normalize=True)
+
+    # print(z.shape)
+
+    data_config = config.data.params.dataset_config
+    dataset = instantiate_from_config(data_config)
+
+    out_dirs = ["image_vae", "pose_vae"]
+    for idx in range(dataset.__len__()):
+        paths = dataset.data[idx]
+        source_image, source_skeleton, _, _ = dataset.__getitem__(idx)
+
+        source_image, source_skeleton = source_image.unsqueeze(0).cuda(), source_skeleton.unsqueeze(0).cuda()
+        img_enc = vae_model.encode(source_image).sample().detach().cpu().numpy()
+        ske_enc = vae_model.encode(source_skeleton).sample().detach().cpu().numpy()
+
+        fp = paths["source_image"].replace("img", out_dirs[0])
+        if not os.path.exists(os.path.dirname(fp)):
+            os.makedirs(os.path.dirname(fp))
+        np.save(fp, img_enc)
+
+        fp = paths["source_skeleton"].replace("keypoints", out_dirs[1])
+        if not os.path.exists(os.path.dirname(fp)):
+            os.makedirs(os.path.dirname(fp))
+        np.save(fp, ske_enc)
+
+
