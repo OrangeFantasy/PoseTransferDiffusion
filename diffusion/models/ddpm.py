@@ -259,15 +259,15 @@ class PoseTransferDiffusion(DDPM):
         model_output = self.apply_model(x_noisy, t, condition)
 
         # Note: save training result.
-        if self.global_step % 10 == 0:
-            x_0_pred = ((x_noisy - extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * model_output) / 
-                extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape))
-            save_image(torch.cat([x_start, x_0_pred, condition[0], condition[1]], dim=-1), "./images/p_losses_vae" + str(self.global_step) + ".png", normalize=True)
-            x_start_ = self.decode_first_stage(x_start)
-            x_0_ = self.decode_first_stage(x_0_pred)
-            pose = self.decode_first_stage(condition[0])
-            src_img = self.decode_first_stage(condition[1])
-            save_image(torch.cat([x_start_, x_0_, pose, src_img], dim=-1), "./images/p_losses" + str(self.global_step) + ".png", normalize=True)
+        # if self.global_step % 10 == 0:
+        #     x_0_pred = ((x_noisy - extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * model_output) / 
+        #         extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape))
+        #     save_image(torch.cat([x_start, x_0_pred, condition[0], condition[1]], dim=-1), "./images/p_losses_vae" + str(self.global_step) + ".png", normalize=True)
+        #     x_start_ = self.decode_first_stage(x_start)
+        #     x_0_ = self.decode_first_stage(x_0_pred)
+        #     pose = self.decode_first_stage(condition[0])
+        #     src_img = self.decode_first_stage(condition[1])
+        #     save_image(torch.cat([x_start_, x_0_, pose, src_img], dim=-1), "./images/p_losses" + str(self.global_step) + ".png", normalize=True)
 
         loss_dict = {}
         prefix = 'train' if self.training else 'val'
@@ -289,17 +289,24 @@ class PoseTransferDiffusion(DDPM):
         return loss, loss_dict
     
     def get_input(self, batch):
+        # Note: get inputs from raw image and keypoints.
         # inputs: batch includes source image, source pose, target image and target pose.
         # return: a target image latent code, a list with concat condition and cross condition.
-        src_image, src_pose, tgt_image, tgt_pose = batch
         
-        tgt_pose = tgt_pose * probability_mask(tgt_pose.shape, self.guidance_probability, tgt_pose.device)
-        src_image = src_image * probability_mask(src_image.shape, self.guidance_probability, src_image.device)
+        # src_image, src_pose, tgt_image, tgt_pose = batch
+        # tgt_pose = tgt_pose * probability_mask(tgt_pose.shape, self.guidance_probability, tgt_pose.device)
+        # src_image = src_image * probability_mask(src_image.shape, self.guidance_probability, src_image.device)
 
-        z = self.get_first_stage_encoding(self.encode_first_stage(tgt_image)).detach()
-        c_concat = self.get_first_stage_encoding(self.encode_first_stage(tgt_pose)).detach()
-        c_cross = self.get_first_stage_encoding(self.encode_first_stage(src_image)).detach()
+        # z = self.get_first_stage_encoding(self.encode_first_stage(tgt_image)).detach()
+        # c_concat = self.get_first_stage_encoding(self.encode_first_stage(tgt_pose)).detach()
+        # c_cross = self.get_first_stage_encoding(self.encode_first_stage(src_image)).detach()
+        
+        # Note: get inputs from image and pose encoding by AutoencoderKL.
+        src_img_enc, src_pose_enc, tgt_img_enc, tgt_pose_enc = batch
 
+        z = tgt_img_enc
+        c_concat = tgt_pose_enc * probability_mask(tgt_pose_enc.shape, self.guidance_probability, tgt_pose_enc.device)
+        c_cross = src_img_enc * probability_mask(src_img_enc.shape, self.guidance_probability, src_img_enc.device)
         return z, [c_concat, c_cross]
 
     def shared_step(self, batch):
