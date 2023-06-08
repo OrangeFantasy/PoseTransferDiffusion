@@ -1,6 +1,6 @@
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
-from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
+from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 
 from diffusion.utils import instantiate_from_config
 
@@ -22,3 +22,6 @@ class DataInterFace(pl.LightningDataModule):
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         return DataLoader(self.dataset, batch_size=self.train_batch_size, num_workers=self.num_workers, shuffle=True, pin_memory=True)
+    
+    def test_dataloader(self) -> EVAL_DATALOADERS:
+        return DataLoader(self.dataset, batch_size=32, shuffle=True, pin_memory=True)

@@ -93,7 +93,7 @@ class DDPM(pl.LightningModule):
         self.register_buffer('lvlb_weights', lvlb_weights, persistent=False)
         assert not torch.isnan(self.lvlb_weights).all()
 
-    def init_from_ckpt(self, path, ignore_keys=list(), only_model=False):
+    def init_from_ckpt(self, path, ignore_keys=list(), only_model=True):
         ckpt = torch.load(path, map_location="cpu")
         keys = list(ckpt.keys())
         for k in keys:
@@ -101,8 +101,7 @@ class DDPM(pl.LightningModule):
                 if k.startswith(ik):
                     print("Deleting key {} from state_dict.".format(k))
                     del ckpt[k]
-        self.load_state_dict(ckpt, strict=False)
-        pass
+        missing, unexpected = self.load_state_dict(ckpt["state_dict"], strict=False)
 
     def q_mean_variance(self, x_start, t):
         """
@@ -324,10 +323,13 @@ class PoseTransferDiffusion(DDPM):
 
     @torch.no_grad()
     def p_mean_variance(self, x_t, c, t):
-        model_out = self.apply_model(x_t, t, c)
-
+        eps = self.apply_model(x_t, t, c)
+        no_concat_eps = self.apply_model(x_t, t, [torch.zeros_like(c[0]), c[1]])
+        no_cross_eps = self.apply_model(x_t, t, [c[0], torch.zeros_like(c[1])])
+        eps = 5 * eps - 2 * no_concat_eps - 2 * no_cross_eps
+        
         if self.parameterization == "eps":
-            x_recon = self.predict_start_from_noise(x_t, t, noise=model_out)
+            x_recon = self.predict_start_from_noise(x_t, t, noise=eps)
         else:
             raise TypeError
         
@@ -357,8 +359,18 @@ class PoseTransferDiffusion(DDPM):
 
     @torch.no_grad()
     def sample(self, condition, batch_size=16):
-        x_T = torch.randn([batch_size, self.ch, self.image_size, self.image_size], device=self.betas.device)
+        x_T = torch.randn_like(condition[0])
         return self.p_sample_loop(x_T, condition)
+    
+    def test_step(self, batch, batch_idx):
+        _, _, tgt_img_enc, tgt_pose_enc = batch
+        
+        _z = self.sample([tgt_pose_enc, tgt_img_enc], batch_size=1)
+        _img = self.decode_first_stage(tgt_img_enc)
+        _pose = self.decode_first_stage(tgt_pose_enc)
+        img = self.decode_first_stage(_z)
+        
+        save_image(torch.cat([_img, _pose, img], dim=-1), "./images/{}.png".format(batch_idx), normalize=True)
 
 
 if __name__ == "__main__":

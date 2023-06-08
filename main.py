@@ -31,9 +31,10 @@ def get_parser():
     parser.add_argument("--config", type=str, default="configs/diffusion_config.yaml")
 
     # Trainer args.
-    parser.add_argument("--max_epochs", type=int, default=30)
+    parser.add_argument("--max_epochs", type=int, default=100)
     parser.add_argument("--accelerator", type=str, default="gpu")
     parser.add_argument("--device", type=int, default=1)
+    parser.add_argument("--resume_from_checkpoint", type=str, default="./checkpoints/epoch=29-step=22500.ckpt")
     return parser
 
 
@@ -50,7 +51,10 @@ if __name__ == '__main__':
         model = torch.compile(model)
         print("Platform: Linux. Use compiled model.")
 
-    ckpt_callback = ModelCheckpoint(save_last=True, save_weights_only=True, dirpath="./checkpoints/")
+    ckpt_callback = ModelCheckpoint(dirpath="./checkpoints/")
 
     trainer = Trainer.from_argparse_args(opt, callbacks=ckpt_callback)
     trainer.fit(model, dataloader)
+
+    #trainer.test(model, dataloader)
+    

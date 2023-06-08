@@ -12,7 +12,7 @@ model:
     v_posterior: 0.0
     parameterization: "eps"
     guidance_probability: 0.15
-    # ckpt_path: 
+    ckpt_path: ./checkpoints/epoch=1-step=1500.ckpt
 
     unet_config:
       target: diffusion.modules.diffusionmodules.unet.UNetModel

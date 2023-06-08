@@ -1,5 +1,6 @@
 __/
 __pycache__/
+checkpoints/
 lightning_logs/
 images/
 images/*.*
