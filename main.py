@@ -4,11 +4,12 @@ import torch
 from omegaconf import OmegaConf
 from argparse import ArgumentParser
 from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 from diffusion.utils import instantiate_from_config
 
 
-def sys_setting(seed: int, precision: str = "medium"):
+def sys_setting(seed: int, precision: str = "high"):
     torch.set_float32_matmul_precision(precision)
     
     torch.manual_seed(seed)
@@ -49,5 +50,7 @@ if __name__ == '__main__':
         model = torch.compile(model)
         print("Platform: Linux. Use compiled model.")
 
-    trainer = Trainer.from_argparse_args(opt)
+    ckpt_callback = ModelCheckpoint(save_last=True, save_weights_only=True, dirpath="./checkpoints/")
+
+    trainer = Trainer.from_argparse_args(opt, callbacks=ckpt_callback)
     trainer.fit(model, dataloader)

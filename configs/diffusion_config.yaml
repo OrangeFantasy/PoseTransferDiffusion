@@ -21,7 +21,7 @@ model:
         out_ch: 4
         model_ch: 128
         num_res_blocks: 2
-        attn_resolutions: [2, 4]
+        attn_resolutions: [1, 2, 4]
         ch_mult: [1, 2, 4, 4]
         dim_head: 64
         context_dim: 256
@@ -55,11 +55,11 @@ data:
   target: data.data_interface.DataInterFace
   params: 
     num_workers: 8
-    train_batch_size: 8
+    train_batch_size: 40
     test_batch_size: 1
     
     dataset_config:
-      target: data.dataset.deep_fashion.DeepFashionDataset_FromEncoding
+      target: data.dataset.deep_fashion_encoding.DeepFashionDataset_FromEncoding
       params:
         root: "D:/Project/Dataset/In-shop Clothes Retrieval Benchmark"
         pairs_num: 30000
