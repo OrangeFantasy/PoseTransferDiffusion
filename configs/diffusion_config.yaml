@@ -11,7 +11,7 @@ model:
     loss_type: "l2"
     v_posterior: 0.0
     parameterization: "eps"
-    guidance_probability: 0.8
+    guidance_probability: 0.5
     # ckpt_path: 
 
     unet_config:

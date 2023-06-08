@@ -243,7 +243,7 @@ if __name__ == "__main__":
 
     # print(z.shape)
 
-    data_config = config.data.params.dataset_config
+    data_config = config.raw_data_config
     dataset = instantiate_from_config(data_config)
 
     out_dirs = ["image_vae", "pose_vae"]
