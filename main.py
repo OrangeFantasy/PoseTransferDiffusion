@@ -30,7 +30,7 @@ def get_parser():
     parser.add_argument("--config", type=str, default="configs/diffusion_config.yaml")
 
     # Trainer args.
-    parser.add_argument("--max_epochs", type=int, default=200)
+    parser.add_argument("--max_epochs", type=int, default=30)
     parser.add_argument("--accelerator", type=str, default="gpu")
     parser.add_argument("--device", type=int, default=1)
     return parser

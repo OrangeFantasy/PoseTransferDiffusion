@@ -144,10 +144,10 @@ class DeepFashionDataset_FromEncoding(Dataset):
     
     def __getitem__(self, index):
         paths = self.data_paths[index]
-        src_img = torch.from_numpy(np.load(paths[0])).squeeze()
-        src_pose = torch.from_numpy(np.load(paths[1])).squeeze()
-        tgt_img = torch.from_numpy(np.load(paths[2])).squeeze()
-        tgt_pose = torch.from_numpy(np.load(paths[3])).squeeze()
+        src_img = torch.from_numpy(np.load(paths[0]))
+        src_pose = torch.from_numpy(np.load(paths[1]))
+        tgt_img = torch.from_numpy(np.load(paths[2]))
+        tgt_pose = torch.from_numpy(np.load(paths[3]))
 
         return src_img, src_pose, tgt_img, tgt_pose
 
@@ -175,6 +175,54 @@ class DeepFashionDataset_FromEncoding(Dataset):
     @staticmethod
     def _to_pose_encoding_path(path: str) -> str:
         return path.replace("img", "encoding_pose").replace(".jpg", ".txt") + ".npy"
+
+
+# class DeepFashionDataset_FromMemory(Dataset):
+#     def __init__(self, root, pairs_num: int = -1, is_train: bool = True):
+#         self.root = root
+#         self.data = self.get_all_data_from("train_pairs.txt" if is_train else "test_pairs.txt")
+        
+#         if pairs_num != -1:
+#             self.data = random.sample(self.data, k=pairs_num)
+
+#         self.size = len(self.data)
+    
+#     def __len__(self):
+#         return self.size
+    
+#     def __getitem__(self, index):
+#         data = self.data[index]
+#         # src_img = torch.from_numpy(np.load(paths[0]))
+#         # src_pose = torch.from_numpy(np.load(paths[1]))
+#         # tgt_img = torch.from_numpy(np.load(paths[2]))
+#         # tgt_pose = torch.from_numpy(np.load(paths[3]))
+
+#         return self.data[index]
+
+#     def get_all_data_from(self, pairs_file):
+#         file = open(os.path.join(self.root, pairs_file))
+#         lines = file.readlines()
+#         file.close()
+
+#         image_data = []
+#         for item in lines:
+#             data = []
+#             item = item.strip().split(",")
+
+#             data.append(torch.from_numpy(np.load(os.path.join(self.root, self._to_img_encoding_path(item[0])))))
+#             data.append(torch.from_numpy(np.load(os.path.join(self.root, self._to_pose_encoding_path(item[0])))))
+#             data.append(torch.from_numpy(np.load(os.path.join(self.root, self._to_img_encoding_path(item[1])))))
+#             data.append(torch.from_numpy(np.load(os.path.join(self.root, self._to_pose_encoding_path(item[1])))))
+#             image_data.append(data)
+#         return image_data
+    
+#     @staticmethod
+#     def _to_img_encoding_path(path: str) -> str:
+#         return path.replace("img", "encoding_img") + ".npy"
+    
+#     @staticmethod
+#     def _to_pose_encoding_path(path: str) -> str:
+#         return path.replace("img", "encoding_pose").replace(".jpg", ".txt") + ".npy"
 
 
 if __name__ == "__main__":

@@ -21,4 +21,4 @@ class DataInterFace(pl.LightningDataModule):
         self.dataset = instantiate_from_config(self.dataset_config)
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
-        return DataLoader(self.dataset, batch_size=self.train_batch_size, shuffle=True, pin_memory=False)
+        return DataLoader(self.dataset, batch_size=self.train_batch_size, shuffle=True, pin_memory=True)

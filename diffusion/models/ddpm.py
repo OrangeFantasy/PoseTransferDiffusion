@@ -256,16 +256,16 @@ class PoseTransferDiffusion(DDPM):
         model_output = self.apply_model(x_noisy, t, condition)
 
         # Note: save training result.
-        if self.global_step % 1 == 0:
-            x_0_pred = ((x_noisy - extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * model_output) / 
-                extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape))
-            save_image(torch.cat([x_start, x_0_pred, condition[0], condition[1]], dim=-1), "./images/p_losses_vae" + str(self.global_step) + ".png", normalize=True)
-            x_start_ = self.decode_first_stage(x_start)
-            x_0_ = self.decode_first_stage(x_0_pred)
-            pose = self.decode_first_stage(condition[0])
-            src_img = self.decode_first_stage(condition[1])
-            save_image(torch.cat([x_start_, x_0_, pose, src_img], dim=-1), "./images/p_losses" + str(self.global_step) + ".png", normalize=True)
-            save_image(pose, "./images/p_losses_pose" + str(self.global_step) + ".png", normalize=True)
+        # if self.global_step % 5 == 0:
+        #     x_0_pred = ((x_noisy - extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * model_output) / 
+        #         extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape))
+        #     save_image(torch.cat([x_start, x_0_pred, condition[0], condition[1]], dim=-1), "./images/p_losses_vae" + str(self.global_step) + ".png", normalize=True)
+        #     x_start_ = self.decode_first_stage(x_start)
+        #     x_0_ = self.decode_first_stage(x_0_pred)
+        #     pose = self.decode_first_stage(condition[0])
+        #     src_img = self.decode_first_stage(condition[1])
+        #     save_image(torch.cat([x_start_, x_0_, pose, src_img], dim=-1), "./images/p_losses" + str(self.global_step) + ".png", normalize=True)
+        #     save_image(pose, "./images/p_losses_pose" + str(self.global_step) + ".png", normalize=True)
 
         loss_dict = {}
         prefix = 'train' if self.training else 'val'
@@ -275,7 +275,7 @@ class PoseTransferDiffusion(DDPM):
         else:
             raise NotImplementedError()
 
-        loss_simple = self.get_loss(model_output, target, mean=False).mean(dim=[1, 2, 3])
+        loss_simple = self.get_loss(model_output, target, mean=False).mean()
         loss_dict.update({f"{prefix}/loss_simple": loss_simple.mean()})
 
         return loss_simple, loss_dict

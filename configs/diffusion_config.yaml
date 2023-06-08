@@ -11,7 +11,7 @@ model:
     loss_type: "l2"
     v_posterior: 0.0
     parameterization: "eps"
-    guidance_probability: 0.5
+    guidance_probability: 0.15
     # ckpt_path: 
 
     unet_config:
@@ -24,13 +24,13 @@ model:
         attn_resolutions: [2, 4]
         ch_mult: [1, 2, 4, 4]
         dim_head: 64
-        context_dim: 128
+        context_dim: 256
         context_ch: 4
     
     first_stage_config:
       target: diffusion.models.autoencoder.AutoencoderKL
       params:
-        ckpt_path: E:/_Project\stable-diffusion-webui/models/VAE/vae-ft-mse-840000-ema-pruned.ckpt
+        ckpt_path: E:/Project/checkpoints/vae-ft-mse-840000-ema-pruned.ckpt
         embed_dim: 4
         monitor: val/rec_loss
         ddconfig:
@@ -55,18 +55,18 @@ data:
   target: data.data_interface.DataInterFace
   params: 
     num_workers: 8
-    train_batch_size: 1
+    train_batch_size: 8
     test_batch_size: 1
     
     dataset_config:
       target: data.dataset.deep_fashion.DeepFashionDataset_FromEncoding
       params:
-        root: "E:/_Project/_Dataset/In-shop Clothes Retrieval Benchmark"
-        pairs_num: 20000
+        root: "D:/Project/Dataset/In-shop Clothes Retrieval Benchmark"
+        pairs_num: 30000
         is_train: true
 
 raw_data_config:
   target: data.dataset.deep_fashion.DeepFashionDataset
   params:
-    root: "E:/_Project/_Dataset/In-shop Clothes Retrieval Benchmark"
+    root: "D:/Project/Dataset/In-shop Clothes Retrieval Benchmark"
     image_size: [256, 256]
