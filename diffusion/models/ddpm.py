@@ -351,26 +351,30 @@ class PoseTransferDiffusion(DDPM):
             timesteps = self.num_timesteps
 
         x_t = x_T
-        for i in tqdm(reversed(range(0, timesteps)), desc='Sampling t', total=timesteps):
-            ts = torch.full([x_T.shape[0]], i, device=x_T.device, dtype=torch.long)
+        for step in tqdm(reversed(range(0, timesteps)), desc='Sampling t', total=timesteps):
+            ts = torch.full([x_T.shape[0]], fill_value=step, device=x_T.device, dtype=torch.long)
             x_t = self.p_sample(x_t, condition, ts)
         x_0 = torch.clip(x_t, -1., 1.)
         return x_0
 
     @torch.no_grad()
-    def sample(self, condition, batch_size=16):
+    def sample(self, condition):
         x_T = torch.randn_like(condition[0])
         return self.p_sample_loop(x_T, condition)
     
     def test_step(self, batch, batch_idx):
-        _, _, tgt_img_enc, tgt_pose_enc = batch
+        # Note: vae encoding.
+        src_img_enc, src_pose_enc, tgt_img_enc, tgt_pose_enc = batch
         
-        _z = self.sample([tgt_pose_enc, tgt_img_enc], batch_size=1)
-        _img = self.decode_first_stage(tgt_img_enc)
-        _pose = self.decode_first_stage(tgt_pose_enc)
-        img = self.decode_first_stage(_z)
+        out_z = self.sample([tgt_pose_enc, src_img_enc])
+        sample_img = self.decode_first_stage(out_z)
+
+        src_img = self.decode_first_stage(src_img_enc)
+        tgt_pose = self.decode_first_stage(tgt_pose_enc)
+        tgt_img = self.decode_first_stage(tgt_img_enc)
         
-        save_image(torch.cat([_img, _pose, img], dim=-1), "./images/{}.png".format(batch_idx), normalize=True)
+        save_image(torch.cat([src_img, tgt_pose, tgt_img, sample_img], dim=-1), 
+                   "./images/sample_{}.png".format(batch_idx), normalize=True, nrow=2)
 
 
 if __name__ == "__main__":

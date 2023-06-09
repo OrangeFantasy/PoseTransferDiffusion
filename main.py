@@ -25,10 +25,11 @@ def sys_setting(seed: int, precision: str = "high"):
     numpy.random.seed(seed)
 
 
-def get_parser():
+def get_parser() -> ArgumentParser:
     parser = ArgumentParser()
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--config", type=str, default="configs/diffusion_config.yaml")
+    parser.add_argument("--status", type=str, default="train", help="train or test.")
 
     # Trainer args.
     parser.add_argument("--max_epochs", type=int, default=100)
@@ -54,7 +55,8 @@ if __name__ == '__main__':
     ckpt_callback = ModelCheckpoint(dirpath="./checkpoints/")
 
     trainer = Trainer.from_argparse_args(opt, callbacks=ckpt_callback)
-    trainer.fit(model, dataloader)
-
-    #trainer.test(model, dataloader)
+    if opt.status == "train":
+        trainer.fit(model, dataloader)
+    elif opt.status == "test":
+        trainer.test(model, dataloader)
     
