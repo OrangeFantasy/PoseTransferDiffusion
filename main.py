@@ -35,7 +35,7 @@ def get_parser() -> ArgumentParser:
     parser.add_argument("--max_epochs", type=int, default=100)
     parser.add_argument("--accelerator", type=str, default="gpu")
     parser.add_argument("--device", type=int, default=1)
-    parser.add_argument("--resume_from_checkpoint", type=str, default="./checkpoints/epoch=29-step=22500.ckpt")
+    parser.add_argument("--resume_from_checkpoint", type=str, default=None)
     return parser
 
 

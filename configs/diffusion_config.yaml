@@ -19,12 +19,12 @@ model:
       params:
         in_ch: 8
         out_ch: 4
-        model_ch: 128
+        model_ch: 320
         num_res_blocks: 2
         attn_resolutions: [1, 2, 4]
         ch_mult: [1, 2, 4, 4]
         dim_head: 64
-        context_dim: 256
+        context_dim: 512
         context_ch: 4
     
     first_stage_config:

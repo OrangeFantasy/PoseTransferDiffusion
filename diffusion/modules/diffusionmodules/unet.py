@@ -178,8 +178,8 @@ class UNetModel(nn.Module):
         )
 
         # Condition.
-        self.condition_mapping = MappingNetwork(context_ch, context_dim, 8)
-        self.multi_scale_encoder = MultiScaleEncoder(context_dim, model_ch, self.num_res_blocks, [], ch_mult)
+        self.condition_mapping = MappingNetwork(context_ch, context_dim, num_layers=8)
+        self.multi_scale_encoder = MultiScaleEncoder(context_dim, model_ch, self.num_res_blocks, ch_mult)
 
         # Input Blocks.
         curr_ch = model_ch

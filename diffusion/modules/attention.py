@@ -231,10 +231,17 @@ class BasicAttentionBlock(nn.Module):
         self.attn1 = AttentionBlock(dim, n_heads, dim_head, None, dropout)
         self.norm2 = nn.GroupNorm(32, dim)
         self.attn2 = AttentionBlock(dim, n_heads, dim_head, context_dim, dropout)
+        self.norm3 = nn.GroupNorm(32, dim)
+        self.ff = nn.Sequential(
+            nn.SiLU(),
+            nn.Dropout(dropout),
+            nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1)
+        )
 
     def forward(self, x: Tensor, context: Tensor = None):
         x = self.attn1(self.norm1(x), None) + x
         x = self.attn2(self.norm2(x), context) + x
+        x = self.ff(self.norm3(x)) + x
         return x
 
 

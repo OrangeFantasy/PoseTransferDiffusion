@@ -324,9 +324,9 @@ class PoseTransferDiffusion(DDPM):
     @torch.no_grad()
     def p_mean_variance(self, x_t, c, t):
         eps = self.apply_model(x_t, t, c)
-        no_concat_eps = self.apply_model(x_t, t, [torch.zeros_like(c[0]), c[1]])
-        no_cross_eps = self.apply_model(x_t, t, [c[0], torch.zeros_like(c[1])])
-        eps = 5 * eps - 2 * no_concat_eps - 2 * no_cross_eps
+        # no_concat_eps = self.apply_model(x_t, t, [torch.zeros_like(c[0]), c[1]])
+        # no_cross_eps = self.apply_model(x_t, t, [c[0], torch.zeros_like(c[1])])
+        # eps = 5 * eps - 2 * no_concat_eps - 2 * no_cross_eps
         
         if self.parameterization == "eps":
             x_recon = self.predict_start_from_noise(x_t, t, noise=eps)
