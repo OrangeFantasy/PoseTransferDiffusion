@@ -24,4 +24,4 @@ class DataInterFace(pl.LightningDataModule):
         return DataLoader(self.dataset, batch_size=self.train_batch_size, num_workers=self.num_workers, shuffle=True, pin_memory=True)
     
     def test_dataloader(self) -> EVAL_DATALOADERS:
-        return DataLoader(self.dataset, batch_size=32, shuffle=True, pin_memory=True)
+        return DataLoader(self.dataset, batch_size=32, num_workers=self.num_workers, pin_memory=True)

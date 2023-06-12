@@ -12,14 +12,14 @@ model:
     v_posterior: 0.0
     parameterization: "eps"
     guidance_probability: 0.15
-    ckpt_path: ./checkpoints/epoch=1-step=1500.ckpt
+    ckpt_path: ./checkpoints/epoch=99-step=75000.ckpt
 
     unet_config:
       target: diffusion.modules.diffusionmodules.unet.UNetModel
       params:
         in_ch: 8
         out_ch: 4
-        model_ch: 320
+        model_ch: 128
         num_res_blocks: 2
         attn_resolutions: [1, 2, 4]
         ch_mult: [1, 2, 4, 4]

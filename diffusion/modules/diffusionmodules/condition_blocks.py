@@ -49,10 +49,7 @@ class MultiScaleEncoder(nn.Module):
     def __init__(self, in_ch: int, 
                  model_ch: int, 
                  num_res_blocks: list, 
-                 attn_resolutions: list, 
-                 ch_mult: list,
-                 n_heads: int = -1, 
-                 dim_head: int = -1) -> None:
+                 ch_mult: list) -> None:
         super().__init__()
 
         # Input Blocks.

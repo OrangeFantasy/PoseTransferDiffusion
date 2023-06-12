@@ -102,6 +102,7 @@ class DDPM(pl.LightningModule):
                     print("Deleting key {} from state_dict.".format(k))
                     del ckpt[k]
         missing, unexpected = self.load_state_dict(ckpt["state_dict"], strict=False)
+        print("[INFO] init from ckpt: {}".format(path))
 
     def q_mean_variance(self, x_start, t):
         """
@@ -324,12 +325,13 @@ class PoseTransferDiffusion(DDPM):
     @torch.no_grad()
     def p_mean_variance(self, x_t, c, t):
         eps = self.apply_model(x_t, t, c)
-        # no_concat_eps = self.apply_model(x_t, t, [torch.zeros_like(c[0]), c[1]])
-        # no_cross_eps = self.apply_model(x_t, t, [c[0], torch.zeros_like(c[1])])
-        # eps = 5 * eps - 2 * no_concat_eps - 2 * no_cross_eps
+        no_concat_eps = self.apply_model(x_t, t, [torch.zeros_like(c[0]), c[1]])
+        no_cross_eps = self.apply_model(x_t, t, [c[0], torch.zeros_like(c[1])])
+        eps = 16 * eps - 5 * no_concat_eps - 10 * no_cross_eps
         
         if self.parameterization == "eps":
             x_recon = self.predict_start_from_noise(x_t, t, noise=eps)
+            # save_image(x_recon, "./x_recon.png", normalize=True)
         else:
             raise TypeError
         
@@ -343,6 +345,7 @@ class PoseTransferDiffusion(DDPM):
         noise = torch.randn_like(x_t)
         nonzero_mask = (1 - (t == 0).float()).reshape(x_t.shape[0], *((1,) * (len(x_t.shape) - 1)))
         x_sample = model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
+        # save_image(x_sample, "./x_t_1.png", normalize=True)
         return x_sample
 
     @torch.no_grad()
@@ -354,8 +357,7 @@ class PoseTransferDiffusion(DDPM):
         for step in tqdm(reversed(range(0, timesteps)), desc='Sampling t', total=timesteps):
             ts = torch.full([x_T.shape[0]], fill_value=step, device=x_T.device, dtype=torch.long)
             x_t = self.p_sample(x_t, condition, ts)
-        x_0 = torch.clip(x_t, -1., 1.)
-        return x_0
+        return x_t
 
     @torch.no_grad()
     def sample(self, condition):
@@ -367,13 +369,14 @@ class PoseTransferDiffusion(DDPM):
         src_img_enc, src_pose_enc, tgt_img_enc, tgt_pose_enc = batch
         
         out_z = self.sample([tgt_pose_enc, src_img_enc])
-        sample_img = self.decode_first_stage(out_z)
+        smp_img = self.decode_first_stage(out_z)
+        torch.clip(smp_img, -1, 1)
 
         src_img = self.decode_first_stage(src_img_enc)
         tgt_pose = self.decode_first_stage(tgt_pose_enc)
         tgt_img = self.decode_first_stage(tgt_img_enc)
         
-        save_image(torch.cat([src_img, tgt_pose, tgt_img, sample_img], dim=-1), 
+        save_image(torch.cat([src_img, tgt_pose, tgt_img, smp_img], dim=-1), 
                    "./images/sample_{}.png".format(batch_idx), normalize=True, nrow=2)
 
 

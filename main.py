@@ -29,13 +29,13 @@ def get_parser() -> ArgumentParser:
     parser = ArgumentParser()
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--config", type=str, default="configs/diffusion_config.yaml")
-    parser.add_argument("--status", type=str, default="train", help="train or test.")
+    parser.add_argument("--status", type=str, default="test", help="train or test.")
 
     # Trainer args.
     parser.add_argument("--max_epochs", type=int, default=100)
     parser.add_argument("--accelerator", type=str, default="gpu")
     parser.add_argument("--device", type=int, default=1)
-    parser.add_argument("--resume_from_checkpoint", type=str, default=None)
+    # parser.add_argument("--resume_from_checkpoint", type=str, default="./checkpoints/epoch=99-step=75000.ckpt")
     return parser
 
 
