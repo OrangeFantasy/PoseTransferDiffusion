@@ -68,22 +68,49 @@ class Upsample(nn.Module):
         return x
 
 
-class AdaResBlock(TimestepBlock):
-    def __init__(self, in_ch: int, out_ch: int, emb_dim: int, dropout: float = 0.0):
+class AdaptiveInstanceNorm2d(nn.Module):
+    def __init__(self, ch, w_ch) -> None:
         super().__init__()
 
-        self.in_norm = AdaptiveInstanceNorm(in_ch)
+        self.norm = nn.InstanceNorm2d(ch, affine=False)
+
+        self.shared = nn.Sequential(
+            nn.Conv2d(w_ch, ch, kernel_size=3, stride=1, padding=1),
+            nn.LeakyReLU(negative_slope=0.15, inplace=True)
+        )
+        self.beta = nn.Conv2d(ch, ch, kernel_size=3, stride=1, padding=1)
+        self.gamma = nn.Conv2d(ch, ch, kernel_size=3, stride=1, padding=1)
+
+    def forward(self, x, w):
+        x = self.norm(x)
+
+        w = self.shared(w)
+        beta = self.beta(w)
+        gamma = self.gamma(w)
+
+        x = x * (1 + gamma) + beta
+        return x
+
+
+class AdaptiveResBlock(TimestepBlock):
+    def __init__(self, in_ch: int, out_ch: int, emb_dim: int, context_ch: int = None, dropout: float = 0.0) -> None:
+        super().__init__()
+
+        if context_ch is None:
+            context_ch = in_ch
+
+        self.emb_layers = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(emb_dim, context_ch)
+        )
+
+        self.in_norm = AdaptiveInstanceNorm2d(ch=in_ch, w_ch=context_ch)
         self.in_layers = nn.Sequential(
             nn.SiLU(),
             nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1)
         )
 
-        self.emb_layers = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(emb_dim, out_ch)
-        )
-
-        self.out_norm = AdaptiveInstanceNorm(out_ch)
+        self.out_norm = AdaptiveInstanceNorm2d(ch=out_ch, w_ch=context_ch)
         self.out_layers = nn.Sequential(
             nn.SiLU(),
             nn.Dropout(dropout),
@@ -91,20 +118,16 @@ class AdaResBlock(TimestepBlock):
         )
 
         if in_ch == out_ch:
-            self.w_skip = nn.Identity()
             self.skip_connection = nn.Identity()
         else:
-            self.w_skip = nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=1, padding=0)
             self.skip_connection = nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x, emb, *args):
         w = args[0]
-        h = self.in_layers(self.in_norm(x, w))
 
-        h = h + self.emb_layers(emb)[:, :, None, None]
-
-        w = self.w_skip(w)
-        h = self.out_layers(self.out_norm(h, w))
+        emb = self.emb_layers(emb)
+        h = self.in_layers(self.in_norm(x, w + emb[:, :, None, None]))
+        h = self.out_layers(self.out_norm(h, w + emb[:, :, None, None]))
 
         x = self.skip_connection(x)
         return x + h
@@ -192,7 +215,7 @@ class UNetModel(nn.Module):
         for level, mult in enumerate(ch_mult):
             _ch = model_ch * mult
             for _ in range(self.num_res_blocks[level]):
-                _blocks = [AdaResBlock(curr_ch, _ch, temb_dim, dropout)]
+                _blocks = [AdaptiveResBlock(curr_ch, _ch, temb_dim, dropout=dropout)]
                 curr_ch = _ch
 
                 if down_resolution in attn_resolutions:
@@ -218,7 +241,7 @@ class UNetModel(nn.Module):
             n_heads = curr_ch // dim_head
             _dim_head = dim_head
         self.middle_blocks = TimestepEmbedSequential(
-            AdaResBlock(curr_ch, curr_ch, temb_dim, dropout),
+            AdaptiveResBlock(curr_ch, curr_ch, temb_dim, dropout=dropout),
             SpatialAttentionBlock(curr_ch, n_heads, _dim_head, depth=1, context_dim=context_dim, dropout=dropout),
             ResBlock(curr_ch, curr_ch, temb_dim, dropout),
         )
@@ -277,6 +300,6 @@ if __name__ == "__main__":
                       ch_mult=[1, 2, 4, 4], dim_head=64, context_dim=128, context_ch=4).cuda()
     x = torch.rand([1, 8, 32, 32]).cuda()  # [b, c, h, w]
     t = torch.randint(0, 1000, [1]).cuda()  # [b]
-    context = torch.rand([1, 4, 32, 32]).cuda()  # [b, k, d]
+    context = torch.rand([1, 4, 32, 32]).cuda()  #
     out = model.forward(x, t, context)
     print(out.shape)

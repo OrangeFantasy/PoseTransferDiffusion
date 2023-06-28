@@ -84,10 +84,10 @@ class MappingNetwork(nn.Module):
     def __init__(self, z_ch: int, w_ch: int, num_layers: int = 8) -> None:
         super().__init__()
 
-        layers = [nn.Conv2d(z_ch, w_ch, kernel_size=3, stride=1, padding=1)]
+        layers = [nn.Conv2d(z_ch, w_ch, kernel_size=1, stride=1, padding=0)]
         for _ in range(num_layers):
-            layers.append(nn.SiLU())
-            layers.append(nn.Conv2d(w_ch, w_ch, kernel_size=1, stride=1, padding=0))
+            layers.append(nn.LeakyReLU(negative_slope=0.15, inplace=True))
+            layers.append(nn.Conv2d(w_ch, w_ch, kernel_size=3, stride=1, padding=1))
         self.blocks = nn.ModuleList(layers)
 
     def forward(self, x):
