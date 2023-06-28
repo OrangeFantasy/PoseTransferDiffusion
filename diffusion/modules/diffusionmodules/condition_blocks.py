@@ -86,7 +86,7 @@ class MappingNetwork(nn.Module):
 
         layers = [nn.Conv2d(z_ch, w_ch, kernel_size=1, stride=1, padding=0)]
         for _ in range(num_layers):
-            layers.append(nn.LeakyReLU(negative_slope=0.15, inplace=True))
+            layers.append(nn.SiLU())
             layers.append(nn.Conv2d(w_ch, w_ch, kernel_size=3, stride=1, padding=1))
         self.blocks = nn.ModuleList(layers)
 
@@ -96,25 +96,25 @@ class MappingNetwork(nn.Module):
         return x
 
 
-class AdaptiveInstanceNorm(nn.Module):
-    def __init__(self, ch):
-        super().__init__()
-
-        self.norm = nn.Sequential(
-            nn.InstanceNorm2d(ch),
-            nn.SiLU()
-        )
-        self.beta = nn.Conv2d(ch, ch, kernel_size=3, stride=1, padding=1)
-        self.gamma = nn.Conv2d(ch, ch, kernel_size=3, stride=1, padding=1)
-        
-    def forward(self, x, w):
-        w = self.norm(w) 
-        
-        beta = self.beta(w)
-        gamma = self.gamma(w)
-
-        x = beta + x * (1 + gamma)
-        return x
+# class AdaptiveInstanceNorm(nn.Module):
+#     def __init__(self, ch):
+#         super().__init__()
+# 
+#         self.norm = nn.Sequential(
+#             nn.InstanceNorm2d(ch),
+#             nn.SiLU()
+#         )
+#         self.beta = nn.Conv2d(ch, ch, kernel_size=3, stride=1, padding=1)
+#         self.gamma = nn.Conv2d(ch, ch, kernel_size=3, stride=1, padding=1)
+# 
+#     def forward(self, x, w):
+#         w = self.norm(w) 
+#        
+#         beta = self.beta(w)
+#         gamma = self.gamma(w)
+#
+#         x = beta + x * (1 + gamma)
+#         return x
 
 
 if __name__ == "__main__":

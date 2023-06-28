@@ -6,7 +6,7 @@ from abc import abstractmethod
 import sys, os
 sys.path.append(os.getcwd())
 from diffusion.modules.attention import SpatialTransformer, SpatialAttentionBlock
-from diffusion.modules.diffusionmodules.condition_blocks import MappingNetwork, MultiScaleEncoder, AdaptiveInstanceNorm
+from diffusion.modules.diffusionmodules.condition_blocks import MappingNetwork, MultiScaleEncoder
 from diffusion.modules.diffusionmodules.utils import timestep_embedding, zero_module
 sys.path.pop()
 
@@ -69,20 +69,30 @@ class Upsample(nn.Module):
 
 
 class AdaptiveInstanceNorm2d(nn.Module):
-    def __init__(self, ch, w_ch) -> None:
+    def __init__(self, ch, w_ch, emb_dim: int) -> None:
         super().__init__()
 
-        self.norm = nn.InstanceNorm2d(ch, affine=False)
+        self.norm_x = nn.InstanceNorm2d(ch, affine=False)
+
+        self.emb_layers = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(emb_dim, w_ch)
+        )
 
         self.shared = nn.Sequential(
-            nn.Conv2d(w_ch, ch, kernel_size=3, stride=1, padding=1),
-            nn.LeakyReLU(negative_slope=0.15, inplace=True)
+            nn.InstanceNorm2d(w_ch, affine=False),
+            nn.SiLU()
         )
+        if ch != w_ch:
+            self.shared.add_module("skip_connection", nn.Conv2d(w_ch, ch, kernel_size=1, stride=1, padding=0))
+        
         self.beta = nn.Conv2d(ch, ch, kernel_size=3, stride=1, padding=1)
         self.gamma = nn.Conv2d(ch, ch, kernel_size=3, stride=1, padding=1)
 
-    def forward(self, x, w):
-        x = self.norm(x)
+
+    def forward(self, x, w, emb):
+        x = self.norm_x(x)
+        w = w + self.emb_layers(emb)[:, :, None, None]
 
         w = self.shared(w)
         beta = self.beta(w)
@@ -93,24 +103,16 @@ class AdaptiveInstanceNorm2d(nn.Module):
 
 
 class AdaptiveResBlock(TimestepBlock):
-    def __init__(self, in_ch: int, out_ch: int, emb_dim: int, context_ch: int = None, dropout: float = 0.0) -> None:
+    def __init__(self, in_ch: int, out_ch: int, emb_dim: int, dropout: float = 0.0) -> None:
         super().__init__()
 
-        if context_ch is None:
-            context_ch = in_ch
-
-        self.emb_layers = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(emb_dim, context_ch)
-        )
-
-        self.in_norm = AdaptiveInstanceNorm2d(ch=in_ch, w_ch=context_ch)
+        self.in_norm = AdaptiveInstanceNorm2d(ch=in_ch, w_ch=in_ch, emb_dim=emb_dim)
         self.in_layers = nn.Sequential(
             nn.SiLU(),
             nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1)
         )
 
-        self.out_norm = AdaptiveInstanceNorm2d(ch=out_ch, w_ch=context_ch)
+        self.out_norm = AdaptiveInstanceNorm2d(ch=out_ch, w_ch=in_ch, emb_dim=emb_dim)
         self.out_layers = nn.Sequential(
             nn.SiLU(),
             nn.Dropout(dropout),
@@ -125,9 +127,8 @@ class AdaptiveResBlock(TimestepBlock):
     def forward(self, x, emb, *args):
         w = args[0]
 
-        emb = self.emb_layers(emb)
-        h = self.in_layers(self.in_norm(x, w + emb[:, :, None, None]))
-        h = self.out_layers(self.out_norm(h, w + emb[:, :, None, None]))
+        h = self.in_layers(self.in_norm(x, w, emb))
+        h = self.out_layers(self.out_norm(h, w, emb))
 
         x = self.skip_connection(x)
         return x + h
@@ -187,7 +188,8 @@ class UNetModel(nn.Module):
             self.num_res_blocks = len(ch_mult) * [num_res_blocks]
         else:
             if len(num_res_blocks) != len(ch_mult):
-                raise ValueError("provide num_res_blocks either as an int (globally constant) or as a list/tuple (per-level) with the same length as channel_mult")
+                raise ValueError("provide num_res_blocks either as an int (globally constant) \
+                                 or as a list/tuple (per-level) with the same length as channel_mult")
             self.num_res_blocks = num_res_blocks
         
         self.model_ch = model_ch
@@ -215,7 +217,7 @@ class UNetModel(nn.Module):
         for level, mult in enumerate(ch_mult):
             _ch = model_ch * mult
             for _ in range(self.num_res_blocks[level]):
-                _blocks = [AdaptiveResBlock(curr_ch, _ch, temb_dim, dropout=dropout)]
+                _blocks = [AdaptiveResBlock(curr_ch, _ch, temb_dim, dropout)]
                 curr_ch = _ch
 
                 if down_resolution in attn_resolutions:
@@ -241,7 +243,7 @@ class UNetModel(nn.Module):
             n_heads = curr_ch // dim_head
             _dim_head = dim_head
         self.middle_blocks = TimestepEmbedSequential(
-            AdaptiveResBlock(curr_ch, curr_ch, temb_dim, dropout=dropout),
+            AdaptiveResBlock(curr_ch, curr_ch, temb_dim, dropout),
             SpatialAttentionBlock(curr_ch, n_heads, _dim_head, depth=1, context_dim=context_dim, dropout=dropout),
             ResBlock(curr_ch, curr_ch, temb_dim, dropout),
         )
