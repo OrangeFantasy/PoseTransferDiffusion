@@ -371,7 +371,7 @@ class PoseTransferDiffusion(DDPM):
         out_z = self.sample([tgt_pose_enc, src_img_enc])
         smp_img = self.decode_first_stage(out_z)
         torch.clip(smp_img, -1, 1)
-        smp_img = smp_img * 0.5 + 0.5
+        # smp_img = smp_img * 0.5 + 0.5
 
         src_img = self.decode_first_stage(src_img_enc)
         tgt_pose = self.decode_first_stage(tgt_pose_enc)

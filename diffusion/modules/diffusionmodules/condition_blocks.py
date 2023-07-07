@@ -74,7 +74,6 @@ class MultiScaleEncoder(nn.Module):
         hs = [h]
         for module in self.input_blocks:
             h = module(h)
-            # if isinstance(module, ResBlock):
             hs.append(h)
         
         return hs

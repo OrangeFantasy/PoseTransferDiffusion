@@ -12,7 +12,7 @@ model:
     v_posterior: 0.0
     parameterization: "eps"
     guidance_probability: 0.15
-    ckpt_path: ./checkpoints/epoch=99-step=75000.ckpt
+    ckpt_path: ./checkpoints/ex_ckpt-epoch=499-step=375000.ckpt
 
     unet_config:
       target: diffusion.modules.diffusionmodules.unet.UNetModel
@@ -56,14 +56,20 @@ data:
   params: 
     num_workers: 8
     train_batch_size: 40
-    test_batch_size: 1
+    test_batch_size: 32
     
-    dataset_config:
+    train_dataset_config:
       target: data.dataset.deep_fashion_encoding.DeepFashionDataset_FromEncoding
       params:
-        root: "D:/Project/Dataset/In-shop Clothes Retrieval Benchmark"
+        root: "D:/Project/Dataset/In-shop Clothes Retrieval Benchmark/train"
         pairs_num: 30000
         is_train: true
+
+    test_dataset_config:
+      target: data.dataset.deep_fashion_encoding.DeepFashionDataset_FromEncoding
+      params:
+        root: "D:/Project/Dataset/In-shop Clothes Retrieval Benchmark/test"
+        is_train: false
 
 raw_data_config:
   target: data.dataset.deep_fashion.DeepFashionDataset
